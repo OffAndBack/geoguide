@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="GéoGuide" />
+  <meta name="description" content="Guide touristique intelligent basé sur votre géolocalisation" />
+  <link rel="manifest" href="/manifest.json" />
+  <title>GéoGuide — Découvrez autour de vous</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- HEADER -->
+    <header class="header">
+      <div class="header-top">
+        <div class="app-title">
+          <svg class="logo-icon" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z" fill="currentColor"/>
+          </svg>
+          GéoGuide
+        </div>
+        <span class="radius-badge" id="radius-label">500 m</span>
+      </div>
+      <div class="location-bar" id="loc-bar" onclick="requestLocation()">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M8 1v2M8 13v2M1 8h2M13 8h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="location-text" id="loc-text">Appuyer pour détecter ma position</span>
+      </div>
+    </header>
+
+    <!-- TABS -->
+    <nav class="tabs">
+      <div class="tab active" onclick="showTab('list')">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="1.5" rx="0.75" fill="currentColor"/><rect x="2" y="7.25" width="8" height="1.5" rx="0.75" fill="currentColor"/><rect x="2" y="10.5" width="10" height="1.5" rx="0.75" fill="currentColor"/></svg>
+        Lieux
+      </div>
+      <div class="tab" onclick="showTab('map')">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5.5 2L2 4v10l3.5-2 5 2 3.5-2V2L10.5 4l-5-2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5.5 2v10M10.5 4v10" stroke="currentColor" stroke-width="1.2"/></svg>
+        Carte
+      </div>
+      <div class="tab" onclick="showTab('settings')">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Réglages
+      </div>
+    </nav>
+
+    <!-- TAB: LIST -->
+    <div class="tab-content active" id="tab-list">
+      <div class="filter-row" id="filter-row">
+        <div class="filter-chip active" onclick="toggleFilter(this,'tous')">Tous</div>
+        <div class="filter-chip" onclick="toggleFilter(this,'monument')">Monuments</div>
+        <div class="filter-chip" onclick="toggleFilter(this,'musée')">Musées</div>
+        <div class="filter-chip" onclick="toggleFilter(this,'parc')">Parcs</div>
+        <div class="filter-chip" onclick="toggleFilter(this,'église')">Églises</div>
+        <div class="filter-chip" onclick="toggleFilter(this,'histoire')">Histoire</div>
+      </div>
+      <div id="places-list">
+        <div class="empty-state">
+          <div class="empty-icon">📍</div>
+          <p>Activez la géolocalisation pour découvrir les lieux autour de vous</p>
+          <button class="cta-btn" onclick="requestLocation()">Détecter ma position</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: MAP -->
+    <div class="tab-content" id="tab-map">
+      <div class="map-container">
+        <div class="map-frame">
+          <svg width="100%" height="100%" viewBox="0 0 360 240" id="map-svg">
+            <!-- Roads -->
+            <rect width="360" height="240" fill="#f5f5f0" rx="0"/>
+            <rect x="0" y="108" width="360" height="12" fill="#e8e8e0" rx="2"/>
+            <rect x="174" y="0" width="12" height="240" fill="#e8e8e0" rx="2"/>
+            <rect x="0" y="60" width="360" height="6" fill="#efefea" rx="1" transform="rotate(-8 0 60)"/>
+            <rect x="0" y="170" width="360" height="6" fill="#efefea" rx="1" transform="rotate(6 0 170)"/>
+            <!-- User dot -->
+            <circle cx="180" cy="120" r="55" fill="none" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4 3" opacity="0.4"/>
+            <circle cx="180" cy="120" r="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+            <circle cx="180" cy="120" r="4" fill="#2563eb"/>
+            <!-- Pins -->
+            <g id="map-pins"></g>
+          </svg>
+        </div>
+        <p class="map-note">Vue simplifiée · Appuyez sur un point pour voir le lieu</p>
+        <button class="geo-btn" onclick="openGoogleMaps()">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1C5.24 1 3 3.24 3 6c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 6.5c-.83 0-1.5-.67-1.5-1.5S7.17 4.5 8 4.5 9.5 5.17 9.5 6 8.83 7.5 8 7.5z" fill="#2563eb"/></svg>
+          Ouvrir dans Google Maps
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB: SETTINGS -->
+    <div class="tab-content" id="tab-settings">
+      <div class="settings-panel">
+        <div class="settings-group">
+          <label class="settings-label">Rayon de recherche</label>
+          <div class="slider-row">
+            <input type="range" min="100" max="2000" step="100" value="500" id="radius-slider" oninput="updateRadius(this.value)">
+            <span class="slider-val" id="radius-val">500 m</span>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <label class="settings-label">Langue des explications</label>
+          <div class="chip-row">
+            <div class="filter-chip active" onclick="setOption(this, 'lang', 'français')">🇫🇷 Français</div>
+            <div class="filter-chip" onclick="setOption(this, 'lang', 'anglais')">🇬🇧 English</div>
+            <div class="filter-chip" onclick="setOption(this, 'lang', 'espagnol')">🇪🇸 Español</div>
+            <div class="filter-chip" onclick="setOption(this, 'lang', 'allemand')">🇩🇪 Deutsch</div>
+            <div class="filter-chip" onclick="setOption(this, 'lang', 'italien')">🇮🇹 Italiano</div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <label class="settings-label">Style des explications</label>
+          <div class="chip-row">
+            <div class="filter-chip active" onclick="setOption(this, 'style', 'détaillé avec anecdotes')">Détaillé</div>
+            <div class="filter-chip" onclick="setOption(this, 'style', 'résumé court en 3 phrases')">Court</div>
+            <div class="filter-chip" onclick="setOption(this, 'style', 'plein d\'anecdotes surprenantes')">Anecdotes</div>
+            <div class="filter-chip" onclick="setOption(this, 'style', 'adapté aux enfants, ludique et simple')">Enfants 👧</div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <label class="settings-label">À propos</label>
+          <p class="settings-about">GéoGuide utilise l'IA Claude (Anthropic) pour générer des explications culturelles et historiques personnalisées sur les lieux autour de vous.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: DETAIL -->
+    <div class="tab-content" id="tab-detail">
+      <div id="detail-content"></div>
+    </div>
+
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
