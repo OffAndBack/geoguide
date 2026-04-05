@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#ffffff" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="GéoGuide" />
   <meta name="description" content="Guide touristique intelligent basé sur votre géolocalisation" />
   <link rel="manifest" href="/manifest.json" />
@@ -29,14 +28,46 @@
         </div>
         <span class="radius-badge" id="radius-label">500 m</span>
       </div>
-      <div class="location-bar" id="loc-bar" onclick="requestLocation()">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-          <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M8 1v2M8 13v2M1 8h2M13 8h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-        <span class="location-text" id="loc-text">Appuyer pour détecter ma position</span>
+
+      <!-- Barre de localisation : GPS + recherche manuelle -->
+      <div class="location-row">
+        <div class="location-bar" id="loc-bar" onclick="requestLocation()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M8 1v2M8 13v2M1 8h2M13 8h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span class="location-text" id="loc-text">Appuyer pour détecter ma position</span>
+        </div>
+        <button class="search-btn" onclick="openSearchPanel()" title="Chercher un lieu">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M11 11l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
       </div>
     </header>
+
+    <!-- PANNEAU DE RECHERCHE MANUELLE -->
+    <div id="search-panel" style="display:none;">
+      <div class="search-overlay" onclick="closeSearchPanel()"></div>
+      <div class="search-box">
+        <div class="search-field-row">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;color:var(--c-text3)">
+            <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M11 11l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <input
+            id="search-input"
+            type="text"
+            placeholder="Ville, quartier, adresse…"
+            oninput="onSearchInput(this.value)"
+            autocomplete="off"
+          />
+          <button class="search-close-btn" onclick="closeSearchPanel()">✕</button>
+        </div>
+        <div id="search-results"></div>
+      </div>
+    </div>
 
     <!-- TABS -->
     <nav class="tabs">
@@ -67,8 +98,11 @@
       <div id="places-list">
         <div class="empty-state">
           <div class="empty-icon">📍</div>
-          <p>Activez la géolocalisation pour découvrir les lieux autour de vous</p>
-          <button class="cta-btn" onclick="requestLocation()">Détecter ma position</button>
+          <p>Activez la géolocalisation ou cherchez un lieu</p>
+          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+            <button class="cta-btn" onclick="requestLocation()">📡 Ma position</button>
+            <button class="cta-btn" style="background:var(--c-bg);color:var(--c-text);border:1px solid var(--c-border2);" onclick="openSearchPanel()">🔍 Chercher</button>
+          </div>
         </div>
       </div>
     </div>
@@ -78,17 +112,14 @@
       <div class="map-container">
         <div class="map-frame">
           <svg width="100%" height="100%" viewBox="0 0 360 240" id="map-svg">
-            <!-- Roads -->
             <rect width="360" height="240" fill="#f5f5f0" rx="0"/>
             <rect x="0" y="108" width="360" height="12" fill="#e8e8e0" rx="2"/>
             <rect x="174" y="0" width="12" height="240" fill="#e8e8e0" rx="2"/>
             <rect x="0" y="60" width="360" height="6" fill="#efefea" rx="1" transform="rotate(-8 0 60)"/>
             <rect x="0" y="170" width="360" height="6" fill="#efefea" rx="1" transform="rotate(6 0 170)"/>
-            <!-- User dot -->
             <circle cx="180" cy="120" r="55" fill="none" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4 3" opacity="0.4"/>
             <circle cx="180" cy="120" r="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
             <circle cx="180" cy="120" r="4" fill="#2563eb"/>
-            <!-- Pins -->
             <g id="map-pins"></g>
           </svg>
         </div>
@@ -103,6 +134,15 @@
     <!-- TAB: SETTINGS -->
     <div class="tab-content" id="tab-settings">
       <div class="settings-panel">
+
+        <div class="settings-group">
+          <label class="settings-label">Unité de distance</label>
+          <div class="chip-row">
+            <div class="filter-chip active" onclick="setOption(this,'unit','metric')">Métrique (m / km)</div>
+            <div class="filter-chip" onclick="setOption(this,'unit','imperial')">Impérial (ft / mi)</div>
+          </div>
+        </div>
+
         <div class="settings-group">
           <label class="settings-label">Rayon de recherche</label>
           <div class="slider-row">
@@ -114,27 +154,27 @@
         <div class="settings-group">
           <label class="settings-label">Langue des explications</label>
           <div class="chip-row">
-            <div class="filter-chip active" onclick="setOption(this, 'lang', 'français')">🇫🇷 Français</div>
-            <div class="filter-chip" onclick="setOption(this, 'lang', 'anglais')">🇬🇧 English</div>
-            <div class="filter-chip" onclick="setOption(this, 'lang', 'espagnol')">🇪🇸 Español</div>
-            <div class="filter-chip" onclick="setOption(this, 'lang', 'allemand')">🇩🇪 Deutsch</div>
-            <div class="filter-chip" onclick="setOption(this, 'lang', 'italien')">🇮🇹 Italiano</div>
+            <div class="filter-chip active" onclick="setOption(this,'lang','français')">🇫🇷 Français</div>
+            <div class="filter-chip" onclick="setOption(this,'lang','anglais')">🇬🇧 English</div>
+            <div class="filter-chip" onclick="setOption(this,'lang','espagnol')">🇪🇸 Español</div>
+            <div class="filter-chip" onclick="setOption(this,'lang','allemand')">🇩🇪 Deutsch</div>
+            <div class="filter-chip" onclick="setOption(this,'lang','italien')">🇮🇹 Italiano</div>
           </div>
         </div>
 
         <div class="settings-group">
           <label class="settings-label">Style des explications</label>
           <div class="chip-row">
-            <div class="filter-chip active" onclick="setOption(this, 'style', 'détaillé avec anecdotes')">Détaillé</div>
-            <div class="filter-chip" onclick="setOption(this, 'style', 'résumé court en 3 phrases')">Court</div>
-            <div class="filter-chip" onclick="setOption(this, 'style', 'plein d\'anecdotes surprenantes')">Anecdotes</div>
-            <div class="filter-chip" onclick="setOption(this, 'style', 'adapté aux enfants, ludique et simple')">Enfants 👧</div>
+            <div class="filter-chip active" onclick="setOption(this,'style','détaillé avec anecdotes')">Détaillé</div>
+            <div class="filter-chip" onclick="setOption(this,'style','résumé court en 3 phrases')">Court</div>
+            <div class="filter-chip" onclick="setOption(this,'style','plein d\'anecdotes surprenantes')">Anecdotes</div>
+            <div class="filter-chip" onclick="setOption(this,'style','adapté aux enfants, ludique et simple')">Enfants 👧</div>
           </div>
         </div>
 
         <div class="settings-group">
           <label class="settings-label">À propos</label>
-          <p class="settings-about">GéoGuide utilise l'IA Claude (Anthropic) pour générer des explications culturelles et historiques personnalisées sur les lieux autour de vous.</p>
+          <p class="settings-about">GéoGuide utilise Gemini (Google) pour générer des explications culturelles et historiques. Les explications IA sont générées à la demande et peuvent varier.</p>
         </div>
       </div>
     </div>
@@ -145,7 +185,6 @@
     </div>
 
   </div>
-
   <script src="/app.js"></script>
 </body>
 </html>
