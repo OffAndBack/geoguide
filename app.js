@@ -1,12 +1,11 @@
 /* =====================================================
-   GéoGuide — app.js v2
-   + Recherche de lieu manuelle (ville, adresse...)
-   + Choix unité de distance (m/km ou miles)
+   GéoGuide — app.js v3
+   Lieux en temps réel via OpenStreetMap / Overpass API
    ===================================================== */
 
 const API_ENDPOINT = '/api/explain';
 const DEFAULT_LOCATION = { lat: 48.8566, lon: 2.3522, label: 'Paris, France' };
-const SEARCH_RADIUS_DEFAULT = 500;
+const SEARCH_RADIUS_DEFAULT = 1000;
 
 let state = {
   coords: null,
@@ -15,34 +14,66 @@ let state = {
   lang: 'français',
   style: 'détaillé avec anecdotes',
   radius: SEARCH_RADIUS_DEFAULT,
-  unit: 'metric',   // 'metric' (m/km) ou 'imperial' (miles)
+  unit: 'metric',
+  loading: false,
 };
 
-// ── Données lieux ─────────────────────────────────────
-const ALL_PLACES = [
-  { id:1,  name:'Tour Eiffel',           icon:'🗼', type:'monument', lat:48.8584, lon:2.2945, tags:['XIXe siècle','Gustave Eiffel','Fer forgé','1889'] },
-  { id:2,  name:'Cathédrale Notre-Dame',  icon:'⛪', type:'église',   lat:48.8530, lon:2.3499, tags:['Gothique','XIIe siècle','Île de la Cité','Victor Hugo'] },
-  { id:3,  name:'Musée du Louvre',        icon:'🏛️', type:'musée',    lat:48.8606, lon:2.3376, tags:['Art universel','Peinture','Joconde','Antiquités'] },
-  { id:4,  name:'Arc de Triomphe',        icon:'🏟️', type:'monument', lat:48.8738, lon:2.2950, tags:['Napoléon','XIXe','Champs-Élysées','Soldat inconnu'] },
-  { id:5,  name:'Jardin des Tuileries',   icon:'🌳', type:'parc',     lat:48.8634, lon:2.3275, tags:['XVIIe','Jardin à la française','Orangerie'] },
-  { id:6,  name:'Sainte-Chapelle',        icon:'🕍', type:'église',   lat:48.8554, lon:2.3450, tags:['Gothique rayonnant','XIIIe','Vitraux','Louis IX'] },
-  { id:7,  name:"Musée d'Orsay",          icon:'🎨', type:'musée',    lat:48.8600, lon:2.3266, tags:['Impressionnisme','Van Gogh','Monet','Gare reconvertie'] },
-  { id:8,  name:'Palais Royal',           icon:'👑', type:'monument', lat:48.8638, lon:2.3370, tags:['XVIIe','Jardins','Colonnes Buren','Richelieu'] },
-  { id:9,  name:'Centre Pompidou',        icon:'🎭', type:'musée',    lat:48.8606, lon:2.3522, tags:['Art moderne','1977','Piano & Rogers','Beaubourg'] },
-  { id:10, name:'Place de la Bastille',   icon:'🗽', type:'histoire', lat:48.8533, lon:2.3692, tags:['Révolution française','1789','Colonne de Juillet'] },
-  { id:11, name:'Panthéon',               icon:'🏛️', type:'monument', lat:48.8462, lon:2.3508, tags:['Grands hommes','Voltaire','Victor Hugo','Coupole'] },
-  { id:12, name:'Sacré-Cœur',             icon:'⛪', type:'église',   lat:48.8867, lon:2.3431, tags:['Montmartre','Néo-byzantin','Butte','Panorama'] },
-  { id:13, name:'Place des Vosges',       icon:'🏘️', type:'histoire', lat:48.8554, lon:2.3625, tags:['XVIIe','Henri IV','Plus ancienne place de Paris'] },
-  { id:14, name:'Palais de Justice',      icon:'⚖️', type:'histoire', lat:48.8554, lon:2.3452, tags:['Île de la Cité','XIVe','Conciergerie','Marie-Antoinette'] },
-  { id:15, name:'Musée Carnavalet',       icon:'🗺️', type:'musée',    lat:48.8574, lon:2.3621, tags:['Histoire de Paris','Gratuit','Marais','Marcel Proust'] },
-  { id:16, name:'Catacombes de Paris',    icon:'💀', type:'histoire', lat:48.8335, lon:2.3322, tags:['Ossements','XVIIIe','Carrières','Empire des morts'] },
-  { id:17, name:'Opéra Garnier',          icon:'🎵', type:'monument', lat:48.8719, lon:2.3316, tags:['Napoléon III','1875','Fantôme de l\'Opéra','Chagall'] },
-  { id:18, name:'Musée Rodin',            icon:'🗿', type:'musée',    lat:48.8558, lon:2.3157, tags:['Sculpture','Le Penseur','Hôtel Biron','Jardins'] },
-  { id:19, name:'Château de Versailles',  icon:'🏰', type:'monument', lat:48.8049, lon:2.1204, tags:['Louis XIV','XVIIe','Galerie des Glaces','Jardins Le Nôtre'] },
-  { id:20, name:'Château de Vincennes',   icon:'🏰', type:'histoire', lat:48.8451, lon:2.4384, tags:['XIVe','Forteresse royale','Donjon médiéval'] },
+// ── Correspondances types OSM → catégories app ────────
+const OSM_QUERIES = [
+  // Monuments / tourisme
+  { tag: 'tourism=attraction',       type: 'monument', icon: '🏛️' },
+  { tag: 'tourism=museum',           type: 'musée',    icon: '🎨' },
+  { tag: 'tourism=gallery',          type: 'musée',    icon: '🖼️' },
+  { tag: 'tourism=viewpoint',        type: 'monument', icon: '👁️' },
+  { tag: 'tourism=artwork',          type: 'monument', icon: '🗿' },
+  { tag: 'historic=monument',        type: 'monument', icon: '🗽' },
+  { tag: 'historic=memorial',        type: 'histoire', icon: '🪦' },
+  { tag: 'historic=castle',          type: 'monument', icon: '🏰' },
+  { tag: 'historic=ruins',           type: 'histoire', icon: '🏚️' },
+  { tag: 'historic=archaeological_site', type: 'histoire', icon: '⛏️' },
+  { tag: 'historic=building',        type: 'histoire', icon: '🏛️' },
+  { tag: 'historic=manor',           type: 'monument', icon: '🏰' },
+  { tag: 'historic=fort',            type: 'histoire', icon: '🏯' },
+  { tag: 'amenity=place_of_worship', type: 'église',   icon: '⛪' },
+  { tag: 'leisure=park',             type: 'parc',     icon: '🌳' },
+  { tag: 'leisure=garden',           type: 'parc',     icon: '🌸' },
+  { tag: 'leisure=nature_reserve',   type: 'parc',     icon: '🌿' },
+  { tag: 'landuse=cemetery',         type: 'histoire', icon: '⚰️' },
 ];
 
-// ── Distance haversine (mètres) ────────────────────────
+// Icône selon le type OSM
+function getIcon(tags) {
+  if (tags.tourism === 'museum')            return '🎨';
+  if (tags.tourism === 'gallery')           return '🖼️';
+  if (tags.tourism === 'viewpoint')         return '👁️';
+  if (tags.tourism === 'artwork')           return '🗿';
+  if (tags.historic === 'castle')           return '🏰';
+  if (tags.historic === 'fort')             return '🏯';
+  if (tags.historic === 'ruins')            return '🏚️';
+  if (tags.historic === 'memorial')         return '🪦';
+  if (tags.historic === 'archaeological_site') return '⛏️';
+  if (tags.amenity === 'place_of_worship') {
+    const rel = tags.religion;
+    if (rel === 'muslim') return '🕌';
+    if (rel === 'jewish') return '🕍';
+    return '⛪';
+  }
+  if (tags.leisure === 'park' || tags.leisure === 'garden') return '🌳';
+  if (tags.leisure === 'nature_reserve')    return '🌿';
+  if (tags.landuse === 'cemetery')          return '⚰️';
+  return '🏛️';
+}
+
+function getType(tags) {
+  if (tags.tourism === 'museum' || tags.tourism === 'gallery') return 'musée';
+  if (tags.amenity === 'place_of_worship')  return 'église';
+  if (tags.leisure === 'park' || tags.leisure === 'garden' || tags.leisure === 'nature_reserve') return 'parc';
+  if (tags.historic === 'memorial' || tags.historic === 'ruins' ||
+      tags.historic === 'archaeological_site' || tags.landuse === 'cemetery') return 'histoire';
+  return 'monument';
+}
+
+// ── Distance haversine ─────────────────────────────────
 function haversine(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -51,30 +82,22 @@ function haversine(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// ── Formatage de distance selon l'unité choisie ────────
 function formatDist(meters) {
   if (state.unit === 'imperial') {
     const miles = meters / 1609.344;
-    return miles < 0.2
-      ? `${Math.round(meters * 3.281)} ft`
-      : `${miles.toFixed(1)} mi`;
+    return miles < 0.2 ? `${Math.round(meters * 3.281)} ft` : `${miles.toFixed(1)} mi`;
   }
-  return meters >= 1000
-    ? `${(meters / 1000).toFixed(1)} km`
-    : `${Math.round(meters)} m`;
+  return meters >= 1000 ? `${(meters/1000).toFixed(1)} km` : `${Math.round(meters)} m`;
 }
 
-// ── Rayon en mètres selon l'unité ─────────────────────
-function radiusInMeters(val) {
-  return state.unit === 'imperial' ? val * 1609.344 : val;
+function radiusInMeters() {
+  return state.unit === 'imperial' ? state.radius * 1609.344 : state.radius;
 }
 
 // ── Géolocalisation GPS ────────────────────────────────
 function requestLocation() {
-  const locText = document.getElementById('loc-text');
-  locText.textContent = 'Localisation en cours…';
+  document.getElementById('loc-text').textContent = 'Localisation en cours…';
   closeSearchPanel();
-
   if (!navigator.geolocation) {
     applyLocation(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lon, DEFAULT_LOCATION.label);
     return;
@@ -102,15 +125,14 @@ async function reverseGeocode(lat, lon) {
 function applyLocation(lat, lon, label) {
   state.coords = { lat, lon };
   document.getElementById('loc-text').textContent = label;
-  loadPlaces();
+  loadPlacesFromOSM();
 }
 
-// ── Recherche manuelle de lieu ─────────────────────────
+// ── Recherche manuelle ─────────────────────────────────
 let searchTimeout = null;
 
 function openSearchPanel() {
-  const panel = document.getElementById('search-panel');
-  panel.style.display = 'block';
+  document.getElementById('search-panel').style.display = 'block';
   document.getElementById('search-input').focus();
 }
 
@@ -132,21 +154,17 @@ async function searchPlace(query) {
   const results = document.getElementById('search-results');
   try {
     const r = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&accept-language=fr`
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&accept-language=fr`
     );
     const data = await r.json();
-    if (!data.length) {
-      results.innerHTML = '<div class="search-empty">Aucun résultat</div>';
-      return;
-    }
+    if (!data.length) { results.innerHTML = '<div class="search-empty">Aucun résultat</div>'; return; }
     results.innerHTML = data.map(d => `
       <div class="search-result-item" onclick="selectPlace(${d.lat}, ${d.lon}, '${d.display_name.replace(/'/g,"\\'")}')">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;color:var(--c-blue)">
           <path d="M8 1C5.24 1 3 3.24 3 6c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 6.5c-.83 0-1.5-.67-1.5-1.5S7.17 4.5 8 4.5 9.5 5.17 9.5 6 8.83 7.5 8 7.5z" fill="currentColor"/>
         </svg>
         <span>${d.display_name}</span>
-      </div>
-    `).join('');
+      </div>`).join('');
   } catch {
     results.innerHTML = '<div class="search-empty">Erreur de connexion</div>';
   }
@@ -158,14 +176,93 @@ function selectPlace(lat, lon, label) {
   closeSearchPanel();
 }
 
-// ── Chargement des lieux ────────────────────────────────
-function loadPlaces() {
+// ── Chargement des lieux via Overpass API (OSM) ────────
+async function loadPlacesFromOSM() {
+  if (!state.coords || state.loading) return;
+  state.loading = true;
+
+  const container = document.getElementById('places-list');
+  container.innerHTML = `
+    <div class="loading-state" style="padding:30px 20px;justify-content:center;flex-direction:column;gap:12px;text-align:center;">
+      <div class="dot-pulse" style="justify-content:center;"><span></span><span></span><span></span></div>
+      <div style="font-size:13px;color:var(--c-text2);">Recherche des lieux via OpenStreetMap…</div>
+    </div>`;
+
   const { lat, lon } = state.coords;
-  const radiusM = radiusInMeters(state.radius);
-  state.places = ALL_PLACES
-    .map(p => ({ ...p, dist: Math.round(haversine(lat, lon, p.lat, p.lon)) }))
-    .filter(p => p.dist <= radiusM)
-    .sort((a, b) => a.dist - b.dist);
+  const radius = Math.round(radiusInMeters());
+
+  // Requête Overpass : tous les lieux touristiques/historiques dans le rayon
+  const query = `
+    [out:json][timeout:25];
+    (
+      node["tourism"~"attraction|museum|gallery|viewpoint|artwork"](around:${radius},${lat},${lon});
+      way["tourism"~"attraction|museum|gallery|viewpoint"](around:${radius},${lat},${lon});
+      node["historic"~"monument|memorial|castle|ruins|archaeological_site|building|manor|fort"](around:${radius},${lat},${lon});
+      way["historic"~"monument|memorial|castle|ruins|archaeological_site|building|manor|fort"](around:${radius},${lat},${lon});
+      node["amenity"="place_of_worship"]["name"](around:${radius},${lat},${lon});
+      way["amenity"="place_of_worship"]["name"](around:${radius},${lat},${lon});
+      node["leisure"~"park|garden|nature_reserve"]["name"](around:${radius},${lat},${lon});
+      way["leisure"~"park|garden|nature_reserve"]["name"](around:${radius},${lat},${lon});
+      node["landuse"="cemetery"]["name"](around:${radius},${lat},${lon});
+      way["landuse"="cemetery"]["name"](around:${radius},${lat},${lon});
+    );
+    out center tags;
+  `;
+
+  try {
+    const resp = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      body: 'data=' + encodeURIComponent(query),
+    });
+    const data = await resp.json();
+
+    // Dédupliquer par nom, filtrer sans nom, calculer distance
+    const seen = new Set();
+    state.places = data.elements
+      .filter(el => {
+        const name = el.tags?.name;
+        if (!name || seen.has(name.toLowerCase())) return false;
+        seen.add(name.toLowerCase());
+        return true;
+      })
+      .map(el => {
+        const lat2 = el.lat ?? el.center?.lat;
+        const lon2 = el.lon ?? el.center?.lon;
+        const tags = el.tags || {};
+        const dist = Math.round(haversine(lat, lon, lat2, lon2));
+        const tagsArr = [
+          tags['name:fr'] !== tags.name ? tags['name:fr'] : null,
+          tags.historic || tags.tourism || tags.leisure || tags.amenity,
+          tags.architect,
+          tags.start_date || tags.year,
+          tags.wikipedia ? 'Wikipedia' : null,
+        ].filter(Boolean).slice(0, 4);
+
+        return {
+          id: el.id,
+          name: tags['name:fr'] || tags.name,
+          originalName: tags.name,
+          icon: getIcon(tags),
+          type: getType(tags),
+          lat: lat2,
+          lon: lon2,
+          dist,
+          tags: tagsArr.length ? tagsArr : [tags.historic || tags.tourism || tags.amenity || ''].filter(Boolean),
+          osmTags: tags,
+        };
+      })
+      .filter(p => p.lat && p.lon)
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 60); // max 60 lieux
+
+  } catch (e) {
+    state.places = [];
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Impossible de charger les lieux.<br>Vérifiez votre connexion et réessayez.</p></div>`;
+    state.loading = false;
+    return;
+  }
+
+  state.loading = false;
   renderPlaces();
   updateMapPins();
 }
@@ -177,22 +274,28 @@ function renderPlaces() {
     container.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">📍</div>
-        <p>Activez la géolocalisation ou cherchez un lieu pour découvrir les sites à proximité</p>
-        <button class="cta-btn" onclick="requestLocation()">Détecter ma position</button>
+        <p>Activez la géolocalisation ou cherchez un lieu</p>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <button class="cta-btn" onclick="requestLocation()">📡 Ma position</button>
+          <button class="cta-btn" style="background:var(--c-bg);color:var(--c-text);border:1px solid var(--c-border2);" onclick="openSearchPanel()">🔍 Chercher</button>
+        </div>
       </div>`;
     return;
   }
+
   const filtered = state.filter === 'tous' ? state.places : state.places.filter(p => p.type === state.filter);
+
   if (!filtered.length) {
     container.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">🔍</div>
-        <p>Aucun lieu dans ce rayon ou cette catégorie.<br>Essayez d'augmenter le rayon dans les réglages.</p>
+        <p>Aucun lieu "${state.filter}" dans ce rayon.<br>Essayez "Tous" ou augmentez le rayon.</p>
       </div>`;
     return;
   }
+
   container.innerHTML = `
-    <div class="section-label">${filtered.length} lieu${filtered.length > 1 ? 'x' : ''} à proximité</div>
+    <div class="section-label">${filtered.length} lieu${filtered.length > 1 ? 'x' : ''} trouvé${filtered.length > 1 ? 's' : ''} · OpenStreetMap</div>
     ${filtered.map(p => `
       <div class="place-card" onclick="showDetail(${p.id})">
         <div class="place-icon">${p.icon}</div>
@@ -203,13 +306,12 @@ function renderPlaces() {
             <div class="place-dot"></div>
             <span>${p.type}</span>
           </div>
-          <div class="place-preview">${p.tags.join(' · ')}</div>
+          <div class="place-preview">${p.tags.join(' · ') || p.type}</div>
         </div>
         <svg class="place-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-      </div>
-    `).join('')}`;
+      </div>`).join('')}`;
 }
 
 // ── Détail d'un lieu ─────────────────────────────────────
@@ -217,6 +319,11 @@ async function showDetail(id) {
   const place = state.places.find(p => p.id === id);
   if (!place) return;
   showTab('detail');
+
+  const wikiLink = place.osmTags?.wikipedia
+    ? `<a href="https://fr.wikipedia.org/wiki/${encodeURIComponent(place.osmTags.wikipedia.replace('fr:',''))}" target="_blank" style="color:var(--c-blue);font-size:12px;">Wikipedia ↗</a>`
+    : '';
+
   document.getElementById('detail-content').innerHTML = `
     <button class="back-btn" onclick="showTab('list')">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -230,6 +337,7 @@ async function showDetail(id) {
       <div class="detail-meta">
         <span>📍 ${formatDist(place.dist)}</span>
         <span>🏷 ${place.type}</span>
+        ${wikiLink}
       </div>
     </div>
     <div class="detail-divider"></div>
@@ -247,6 +355,7 @@ async function showDetail(id) {
         Régénérer
       </button>
     </div>`;
+
   await fetchExplanation(place);
 }
 
@@ -258,7 +367,13 @@ async function fetchExplanation(place) {
     const res = await fetch(API_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ place: place.name, type: place.type, tags: place.tags, lang: state.lang, style: state.style }),
+      body: JSON.stringify({
+        place: place.name,
+        type: place.type,
+        tags: place.tags,
+        lang: state.lang,
+        style: state.style,
+      }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     textEl.innerHTML = '';
@@ -283,11 +398,9 @@ async function fetchExplanation(place) {
         } catch {}
       }
     }
-  } catch (err) {
-    if (document.getElementById('detail-text')) {
-      document.getElementById('detail-text').innerHTML =
-        `<p style="color:var(--c-text2)">Impossible de charger l'explication. Vérifiez la clé API dans Vercel.</p>`;
-    }
+  } catch {
+    const el = document.getElementById('detail-text');
+    if (el) el.innerHTML = `<p style="color:var(--c-text2)">Impossible de charger l'explication.</p>`;
   }
 }
 
@@ -300,10 +413,10 @@ function regenerateExplanation(id) {
 function updateMapPins() {
   const g = document.getElementById('map-pins');
   if (!g || !state.coords) return;
-  const nearby = state.places.slice(0, 8);
+  const nearby = state.places.slice(0, 10);
   if (!nearby.length) { g.innerHTML = ''; return; }
   const cx = 180, cy = 120;
-  const scale = 1500000 / radiusInMeters(state.radius) * 80;
+  const scale = 1500000 / radiusInMeters() * 80;
   g.innerHTML = nearby.map(p => {
     const dx = (p.lon - state.coords.lon) * scale * Math.cos(state.coords.lat * Math.PI / 180);
     const dy = -(p.lat - state.coords.lat) * scale;
@@ -312,7 +425,7 @@ function updateMapPins() {
     return `
       <g onclick="showDetail(${p.id})" style="cursor:pointer">
         <circle cx="${x}" cy="${y}" r="16" fill="var(--c-bg)" stroke="var(--c-border2)" stroke-width="1.5"/>
-        <text x="${x}" y="${y+6}" text-anchor="middle" font-size="14">${p.icon}</text>
+        <text x="${x}" y="${y+6}" text-anchor="middle" font-size="13">${p.icon}</text>
       </g>`;
   }).join('');
 }
@@ -327,7 +440,6 @@ function showTab(tab) {
   if (target) target.classList.add('active');
 }
 
-// ── Filtres ─────────────────────────────────────────────
 function toggleFilter(el, val) {
   document.querySelectorAll('#filter-row .filter-chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
@@ -338,13 +450,16 @@ function toggleFilter(el, val) {
 // ── Réglages ─────────────────────────────────────────────
 function updateRadius(val) {
   state.radius = parseInt(val);
-  const unit = state.unit === 'imperial' ? 'mi' : (state.radius >= 1000 ? 'km' : 'm');
   const display = state.unit === 'imperial'
     ? `${state.radius} mi`
     : (state.radius >= 1000 ? `${(state.radius/1000).toFixed(1)} km` : `${state.radius} m`);
   document.getElementById('radius-val').textContent = display;
   document.getElementById('radius-label').textContent = display;
-  if (state.coords) loadPlaces();
+}
+
+// Recharger quand on relâche le slider
+function onRadiusChange() {
+  if (state.coords) loadPlacesFromOSM();
 }
 
 function setOption(el, key, value) {
@@ -358,25 +473,22 @@ function switchUnit(unit) {
   state.unit = unit;
   const slider = document.getElementById('radius-slider');
   if (unit === 'imperial') {
-    // Convertir le rayon courant en miles
-    const miles = Math.round(state.radius / 1609.344) || 1;
+    const miles = Math.max(1, Math.round(state.radius / 1609.344));
     slider.min = 1; slider.max = 20; slider.step = 1; slider.value = miles;
     state.radius = miles;
     document.getElementById('radius-val').textContent = `${miles} mi`;
     document.getElementById('radius-label').textContent = `${miles} mi`;
   } else {
-    // Remettre en mètres
-    const meters = Math.round(state.radius * 1609.344 / 100) * 100 || 500;
-    slider.min = 100; slider.max = 2000; slider.step = 100; slider.value = meters;
+    const meters = Math.round(state.radius * 1609.344 / 100) * 100 || 1000;
+    slider.min = 200; slider.max = 5000; slider.step = 200; slider.value = meters;
     state.radius = meters;
     const display = meters >= 1000 ? `${(meters/1000).toFixed(1)} km` : `${meters} m`;
     document.getElementById('radius-val').textContent = display;
     document.getElementById('radius-label').textContent = display;
   }
-  if (state.coords) loadPlaces();
+  if (state.coords) loadPlacesFromOSM();
 }
 
-// ── Google Maps ──────────────────────────────────────────
 function openGoogleMaps() {
   const c = state.coords || DEFAULT_LOCATION;
   window.open(`https://www.google.com/maps/@${c.lat},${c.lon},15z`, '_blank');
