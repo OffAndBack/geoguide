@@ -51,7 +51,7 @@ Inclus :
 
 Sois engageant, précis et vivant. Rédige en 2 à 3 paragraphes fluides. Ne mets pas de titre ni de liste à puces.`;
 
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-06-17:streamGenerateContent?alt=sse&key=${apiKey}`;
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse&key=${apiKey}`;
 
   const geminiResponse = await fetch(geminiUrl, {
     method: 'POST',
